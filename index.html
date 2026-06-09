@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>(theFall)² | v1.0</title>
+    <title>(theFall)² | v1.2</title>
     <style>
         /* 重置預設樣式並設置全螢幕黑色背景與點狀陣列 */
         body, html {
@@ -137,13 +137,13 @@
         }
         createWalls();
 
-        // 建立方塊網格 (修改為填滿 100% 畫面)
+        // 建立方塊網格 (填滿滿畫面 100%)
         function createGrid(callback) {
             boxSize = 50;
             
-            // 計算欄數與列數，填滿滿畫面 100%
+            // 計算欄數與列數
             cols = Math.ceil(width / boxSize);
-            rows = Math.ceil(height / boxSize); // 移除原本的 * 0.5
+            rows = Math.ceil(height / boxSize);
 
             // 讓整個網格置中
             const gridW = cols * boxSize;
@@ -287,7 +287,7 @@
             engine.gravity.x = (gamma / 45) * maxGravity;
         }
 
-        // 使用者互動：點擊畫布 -> 畫面定格並直接墜落
+        // 使用者互動：點擊畫布 -> 畫面定格、產生力場炸開並墜落
         canvas.addEventListener('pointerdown', (e) => {
             if (appState === 'live') {
                 appState = 'falling';
@@ -301,23 +301,43 @@
                 // 2. 移除地板，讓方塊可以無盡掉落
                 Composite.remove(world, ground);
 
-                // 3. 施加強烈向下引力
+                // 3. 施加向下引力 (略微調小以凸顯炸開的效果)
                 engine.gravity.x = 0;
-                engine.gravity.y = 1.5; 
+                engine.gravity.y = 1.2; 
 
-                // 4. 解除靜態限制，讓方塊落下 (加上極微小的亂數避免看起來像一塊死板的鐵板)
+                // 4. 取得點擊座標作為力場震央
+                const clickPos = { x: e.clientX, y: e.clientY };
+
+                // 5. 解除靜態限制，並依據距離點擊處的遠近施加向外排斥的力場
                 for (let box of boxes) {
                     Body.setStatic(box, false);
                     
-                    const forceMagnitude = 0.005 * box.mass;
+                    // 計算方塊與點擊處的向量與距離
+                    const dx = box.position.x - clickPos.x;
+                    const dy = box.position.y - clickPos.y;
+                    const dist = Math.hypot(dx, dy);
+                    
+                    // 防呆：避免點擊正中央距離過近導致排斥力無限大
+                    const safeDist = Math.max(dist, 10);
+                    
+                    // 力場公式：距離震央越近，排斥力量越大 (分子越大爆炸感越強)
+                    const forceMagnitude = (3.5 / safeDist) * box.mass;
+                    
+                    // 加入一點微小亂數，讓即使距離一樣的方塊也有不同的翻滾感
+                    const randomX = (Math.random() - 0.5) * 0.005 * box.mass;
+                    const randomY = (Math.random() - 0.5) * 0.005 * box.mass;
+
+                    // 施加排斥推力
                     Body.applyForce(box, box.position, {
-                        x: (Math.random() - 0.5) * forceMagnitude,
-                        y: Math.random() * forceMagnitude 
+                        x: (dx / safeDist) * forceMagnitude + randomX,
+                        y: (dy / safeDist) * forceMagnitude + randomY
                     });
-                    Body.setAngularVelocity(box, (Math.random() - 0.5) * 0.1);
+                    
+                    // 施加隨機旋轉角速度
+                    Body.setAngularVelocity(box, (Math.random() - 0.5) * 0.3);
                 }
 
-                // 5. 等待 1.5 秒讓方塊墜出畫面後，自動清除並重新長出新方塊
+                // 6. 延長等待時間 (原本 1500ms + 新增的 0.75 秒 = 2250ms)
                 setTimeout(() => {
                     // 清除物理世界中的舊方塊
                     Composite.remove(world, boxes);
@@ -338,7 +358,7 @@
                     createGrid(() => {
                         appState = 'live'; // 生長完畢後重新回到等待點擊的狀態
                     });
-                }, 1500);
+                }, 2250); // 延遲時間已修改為 2.25 秒
 
             } else if (appState === 'falling' && e.pointerType === 'mouse') {
                 // 如果在掉落過程中使用者嘗試用滑鼠拖曳捕捉
