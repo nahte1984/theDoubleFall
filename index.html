@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>(theFall)² | v1.3</title>
+    <title>(theFall)² | v1.4</title>
     <style>
         /* 重置預設樣式並設置全螢幕黑色背景與點狀陣列 */
         body, html {
@@ -118,6 +118,7 @@
         let isLive = false;
         let isFrozen = false;
         let appState = 'init'; // 狀態機：init, live, falling, growing
+        let fallbackTimeoutId = null; // 用來儲存防呆計時器，避免跨次互動衝突
 
         // 滑鼠拖曳約束
         let mouseConstraint = null;
@@ -175,6 +176,12 @@
         function resetAndGrow() {
             if (appState !== 'falling') return;
             appState = 'growing'; // 狀態改變，防止重複觸發
+
+            // 成功觸發重生時，清除防呆計時器，避免它在下一次點擊時錯誤引爆
+            if (fallbackTimeoutId) {
+                clearTimeout(fallbackTimeoutId);
+                fallbackTimeoutId = null;
+            }
 
             // 清除物理世界中的舊方塊
             Composite.remove(world, boxes);
@@ -381,7 +388,9 @@
                 }
 
                 // 6. 加上一個 6 秒的防呆機制：如果物理引擎卡住導致方塊沒掉下去，6 秒後強制重置
-                setTimeout(() => {
+                // 記錄 Timeout ID，以確保方塊自然掉完時可以取消它
+                if (fallbackTimeoutId) clearTimeout(fallbackTimeoutId);
+                fallbackTimeoutId = setTimeout(() => {
                     if (appState === 'falling') {
                         resetAndGrow();
                     }
