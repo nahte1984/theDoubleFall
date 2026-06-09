@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>(theFall)² | v1.2</title>
+    <title>(theFall)² | v1.3</title>
     <style>
         /* 重置預設樣式並設置全螢幕黑色背景與點狀陣列 */
         body, html {
@@ -171,6 +171,31 @@
             if (callback) callback();
         }
 
+        // 將重置與生成的邏輯獨立出來
+        function resetAndGrow() {
+            if (appState !== 'falling') return;
+            appState = 'growing'; // 狀態改變，防止重複觸發
+
+            // 清除物理世界中的舊方塊
+            Composite.remove(world, boxes);
+            boxes = [];
+            
+            // 加回底部牆壁
+            Composite.add(world, ground);
+            
+            // 重置重力場
+            engine.gravity.x = 0;
+            engine.gravity.y = 0;
+            
+            // 切換回即時攝影機狀態
+            isFrozen = false;
+            
+            // 開始生長新的網格方塊
+            createGrid(() => {
+                appState = 'live'; // 生長完畢後重新回到等待點擊的狀態
+            });
+        }
+
         // 自定義渲染函數
         function renderLoop() {
             // 更新物理引擎
@@ -178,6 +203,24 @@
 
             // 清空畫布
             ctx.clearRect(0, 0, width, height);
+
+            // 如果正在掉落中，即時監測是否所有方塊都掉出畫面了
+            if (appState === 'falling' && boxes.length > 0) {
+                let allFallen = true;
+                for (let box of boxes) {
+                    // box.bounds.min.y 是方塊最頂部的座標
+                    // 如果頂部座標小於螢幕高度，代表方塊還沒完全離開畫面
+                    if (box.bounds.min.y < height) {
+                        allFallen = false;
+                        break;
+                    }
+                }
+                
+                // 一旦全部離開畫面，立即觸發重生
+                if (allFallen) {
+                    resetAndGrow();
+                }
+            }
 
             if (isLive || isFrozen) {
                 // 決定要畫即時影片還是定格畫面
@@ -337,28 +380,12 @@
                     Body.setAngularVelocity(box, (Math.random() - 0.5) * 0.3);
                 }
 
-                // 6. 延長等待時間 (原本 1500ms + 新增的 0.75 秒 = 2250ms)
+                // 6. 加上一個 6 秒的防呆機制：如果物理引擎卡住導致方塊沒掉下去，6 秒後強制重置
                 setTimeout(() => {
-                    // 清除物理世界中的舊方塊
-                    Composite.remove(world, boxes);
-                    boxes = [];
-                    
-                    // 加回底部牆壁
-                    Composite.add(world, ground);
-                    
-                    // 重置重力場
-                    engine.gravity.x = 0;
-                    engine.gravity.y = 0;
-                    
-                    // 切換回即時攝影機狀態
-                    isFrozen = false;
-                    appState = 'growing';
-                    
-                    // 開始生長新的網格方塊
-                    createGrid(() => {
-                        appState = 'live'; // 生長完畢後重新回到等待點擊的狀態
-                    });
-                }, 2250); // 延遲時間已修改為 2.25 秒
+                    if (appState === 'falling') {
+                        resetAndGrow();
+                    }
+                }, 6000);
 
             } else if (appState === 'falling' && e.pointerType === 'mouse') {
                 // 如果在掉落過程中使用者嘗試用滑鼠拖曳捕捉
